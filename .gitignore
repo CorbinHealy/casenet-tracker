@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Local-only OAuth files (never commit)
+client_secret.json
+token.json
+*.token
+
+# Playwright
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Workflow debug artifacts (local only — Actions uploads them as artifacts)
+actions-debug/
+*.png
+!docs/**/*.png

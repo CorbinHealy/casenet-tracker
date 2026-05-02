@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac LaunchAgent for the CaseNet iMessage delivery.
+
+  Install:
+    cp mac-agent/com.casenet.tracker.plist ~/Library/LaunchAgents/
+    # Edit DASHBOARD_URL below to your actual GH Pages URL.
+    launchctl load ~/Library/LaunchAgents/com.casenet.tracker.plist
+    launchctl start com.casenet.tracker     # to test immediately
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.casenet.tracker.plist
+    rm ~/Library/LaunchAgents/com.casenet.tracker.plist
+
+  This wakes at 6:05 AM local time, fetches docs/digest.json from your
+  GitHub Pages dashboard, and iMessages a one-line summary to yourself.
+
+  Wakes the Mac if asleep — only if your Energy preferences allow it.
+  If your Mac is fully shut down, it will run on next login.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.casenet.tracker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/osascript</string>
+    <!--
+      EDIT THIS PATH to point at the AppleScript file in your local clone of
+      the casenet-tracker repo. e.g. /Users/corbin/code/casenet-tracker/mac-agent/send_imessage.applescript
+    -->
+    <string>/Users/REPLACE_ME/code/casenet-tracker/mac-agent/send_imessage.applescript</string>
+
+    <!-- Arg 1: dashboard URL — EDIT to your GH Pages URL. -->
+    <string>https://YOUR_USERNAME.github.io/casenet-tracker/digest.json</string>
+
+    <!-- Arg 2: phone number or Apple ID email to iMessage. EDIT this. -->
+    <string>+15555551234</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/casenet-tracker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/casenet-tracker.err</string>
+</dict>
+</plist>

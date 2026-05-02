@@ -1,0 +1,85 @@
+# Hearing-type → prep flag rules.
+#
+# `match` is a list of case-insensitive substrings. If ANY of them appears
+# anywhere in the CaseNet hearing-type label, the rule applies.
+#
+# `flag_at_days` is a list of "days before the hearing" at which to flag the
+# matter as needing prep attention. The flag persists from that day until the
+# hearing.
+#
+# Rules are evaluated in order; first match wins. Put more specific rules
+# above more general ones.
+
+# === Your specified rules ===
+
+- match: ["jury trial", "bench trial", "trial setting"]
+  flag_at_days: [60, 45, 30, 14, 7]
+  label: "TRIAL"
+
+- match: ["pre-trial conference", "pretrial conference", "PTC"]
+  flag_at_days: [7, 3]
+  label: "Pre-trial conf."
+
+- match: ["bond hearing", "bond reduction"]
+  flag_at_days: [3]
+  label: "Bond hearing"
+
+- match: ["sentencing"]
+  flag_at_days: [14, 7, 3]
+  label: "Sentencing"
+
+- match: ["case management", "CMC"]
+  flag_at_days: [3]
+  label: "Case mgmt."
+
+- match: ["probation violation"]
+  flag_at_days: [5]
+  label: "Prob. violation"
+
+- match: ["revocation"]
+  flag_at_days: [30, 14, 7, 3]
+  label: "REVOCATION"
+
+# === Defaults I added — edit lead times or remove as desired ===
+
+- match: ["preliminary hearing", "prelim"]
+  flag_at_days: [7, 3]
+  label: "Prelim"
+
+- match: ["motion to suppress", "suppression"]
+  flag_at_days: [14, 7, 3]
+  label: "Suppression"
+
+- match: ["motion in limine"]
+  flag_at_days: [7, 3]
+  label: "MIL"
+
+- match: ["evidentiary hearing", "daubert"]
+  flag_at_days: [14, 7, 3]
+  label: "Evidentiary"
+
+- match: ["plea", "change of plea"]
+  flag_at_days: [1]
+  label: "Plea"
+
+- match: ["competency", "552"]
+  flag_at_days: [7, 3]
+  label: "Competency"
+
+- match: ["show cause", "contempt"]
+  flag_at_days: [3]
+  label: "Show cause"
+
+# === Listed but not flagged ===
+
+- match: ["arraignment", "initial appearance"]
+  flag_at_days: []
+  label: "Arraignment"
+
+- match: ["status conference", "docket call"]
+  flag_at_days: []
+  label: "Status"
+
+- match: ["continuance"]
+  flag_at_days: []
+  label: "Continuance"

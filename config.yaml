@@ -1,0 +1,40 @@
+# Edit me. Bar number lives in GitHub Secrets, not here.
+
+attorney:
+  name: "Corbin Healy"
+  # CaseNet's "Search by Attorney" requires a practicing county. List one or
+  # more — the scraper queries each in turn and merges the results.
+  counties:
+    - "Jackson"
+  timezone: "America/Chicago"
+
+notify:
+  email_to: "corbinhealy@gmail.com"
+  # Subject line for the daily digest.
+  email_subject_prefix: "[CaseNet]"
+  # Skip days that have nothing on the docket and nothing inside any prep window.
+  skip_email_on_empty_days: false
+
+calendar:
+  # Prefix added to event titles. Useful if events somehow leak to your main calendar.
+  event_title_prefix: ""
+  # How party names appear in event titles. Options: full | initials | case_only
+  party_display: "full"
+
+dashboard:
+  # Title shown on the GH Pages dashboard.
+  title: "Corbin's CaseNet Docket"
+  # How many days forward to render in the "upcoming" view.
+  upcoming_window_days: 30
+
+scraper:
+  # CaseNet's Scheduled Hearings → Search by Attorney form. The user-visible
+  # entrypoint. The scraper navigates from here.
+  base_url: "https://www.courts.mo.gov/cnet/welcome.do"
+  # Search window: how many days forward we ask CaseNet for. CaseNet caps
+  # this internally; we request 90 days and parse whatever comes back.
+  forward_days: 90
+  # Headless mode for Playwright. Set false locally if you want to watch.
+  headless: true
+  # If a run fails, save HTML + screenshot to actions-debug/ for triage.
+  save_debug_artifacts_on_failure: true
