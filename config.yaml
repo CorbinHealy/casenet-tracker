@@ -1,40 +1,44 @@
-# Edit me. Bar number lives in GitHub Secrets, not here.
+# Mac-local CaseNet tracker config.
+#
+# Bar number lives in a separate, .gitignored file (.bar_number) — see README.
 
 attorney:
   name: "Corbin Healy"
-  # CaseNet's "Search by Attorney" requires a practicing county. List one or
-  # more — the scraper queries each in turn and merges the results.
   counties:
     - "Jackson"
   timezone: "America/Chicago"
 
 notify:
-  email_to: "corbinhealy@gmail.com"
-  # Subject line for the daily digest.
-  email_subject_prefix: "[CaseNet]"
-  # Skip days that have nothing on the docket and nothing inside any prep window.
-  skip_email_on_empty_days: false
+  # Phone number or Apple ID email — where the morning iMessage goes. Leave
+  # blank to skip iMessages.
+  imessage_to: ""
 
 calendar:
-  # Prefix added to event titles. Useful if events somehow leak to your main calendar.
+  # Master switch — set false to skip Apple Calendar sync.
+  enabled: true
+  # The Calendar.app calendar to sync into. Created automatically if missing.
+  apple_calendar_name: "CaseNet"
+  # Optional prefix for event titles.
   event_title_prefix: ""
-  # How party names appear in event titles. Options: full | initials | case_only
+  # How party names appear: full | initials | case_only
   party_display: "full"
 
 dashboard:
-  # Title shown on the GH Pages dashboard.
   title: "Corbin's CaseNet Docket"
-  # How many days forward to render in the "upcoming" view.
   upcoming_window_days: 30
 
 scraper:
-  # CaseNet's calendarSearchResult.do endpoint. The scraper hits this
-  # directly with one GET per 7-day window.
+  # CaseNet's results endpoint. The scraper hits this with one GET per 7-day
+  # window via Playwright (headless Chromium).
   base_url: "https://www.courts.mo.gov/casenet/calendarSearchResult.do"
-  # Search window: how many days forward we ask CaseNet for. CaseNet only
-  # serves 7 days at a time; we walk forward in 7-day chunks. 60 days is
-  # enough for the longest prep flag (trial 60 days out).
+  # 60 days covers your longest prep flag (trial 60 days out). CaseNet caps
+  # each search at 7 days; we walk forward in 7-day chunks.
   forward_days: 60
   headless: true
-  # If a run fails, save HTML chunks to actions-debug/ for triage.
   save_debug_artifacts_on_failure: true
+
+git:
+  # If true, after each successful run the script commits state/ + docs/ and
+  # pushes to origin/main, which keeps your GitHub Pages dashboard up to date.
+  # Set false if you don't want the daily auto-commits.
+  auto_push: true

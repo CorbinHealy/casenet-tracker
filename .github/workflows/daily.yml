@@ -1,107 +1,22 @@
-name: Daily CaseNet pull
+# This workflow is intentionally disabled.
+#
+# casenet-tracker runs locally on the Mac via a LaunchAgent — see README.
+# The cloud schedule was retired because Missouri CaseNet returns HTTP 403
+# to GitHub Actions runner IPs (firewall-level block on cloud ranges).
+#
+# This file is kept (instead of deleted) so anyone who clones the repo can
+# see why the cron no longer runs.
+
+name: disabled-cloud-cron
 
 on:
-  schedule:
-    # 11:00 UTC daily = 6:00 AM Central Standard Time.
-    # GitHub Actions cron is always UTC; daylight saving means
-    # this is 6:00 AM CST (winter) and 7:00 AM CDT (summer).
-    # The second cron at 10:00 UTC compensates during US daylight saving
-    # (March–Nov) so you reliably get the digest at ~6 AM Central year-round.
-    - cron: '0 11 * * *'
-    - cron: '0 10 * * *'
   workflow_dispatch: {}
 
-permissions:
-  contents: write   # so the workflow can commit state/ and docs/ back
-
-concurrency:
-  group: casenet-daily
-  cancel-in-progress: false
-
 jobs:
-  run:
+  notice:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Skip duplicate cron during DST
-        id: dst_gate
-        env:
-          CRON: ${{ github.event.schedule }}
-        run: |
-          # If today is during US daylight saving, only the 10:00 UTC cron should run.
-          # If standard time, only the 11:00 UTC cron should run.
-          # Manual dispatches always run.
-          if [ -z "$CRON" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          MONTH=$(date -u +%-m)
-          # Rough DST window: March (3) through October (10).
-          if [ "$MONTH" -ge 3 ] && [ "$MONTH" -le 10 ]; then
-            EXPECTED='0 10 * * *'
-          else
-            EXPECTED='0 11 * * *'
-          fi
-          if [ "$CRON" = "$EXPECTED" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: cron=$CRON expected=$EXPECTED"
-          fi
-
-      - uses: actions/checkout@v4
-        if: steps.dst_gate.outputs.run == 'true'
-
-      - name: Set up Python
-        if: steps.dst_gate.outputs.run == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install Python dependencies
-        if: steps.dst_gate.outputs.run == 'true'
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Install Playwright browser
-        if: steps.dst_gate.outputs.run == 'true'
-        run: |
-          python -m playwright install --with-deps chromium
-
-      - name: Run tracker
-        if: steps.dst_gate.outputs.run == 'true'
-        env:
-          MOBAR_NUMBER: ${{ secrets.MOBAR_NUMBER }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          GCAL_CLIENT_ID: ${{ secrets.GCAL_CLIENT_ID }}
-          GCAL_CLIENT_SECRET: ${{ secrets.GCAL_CLIENT_SECRET }}
-          GCAL_REFRESH_TOKEN: ${{ secrets.GCAL_REFRESH_TOKEN }}
-          GCAL_CALENDAR_ID: ${{ secrets.GCAL_CALENDAR_ID }}
-          PYTHONUNBUFFERED: '1'
-        run: |
-          python -m src.main
-
-      - name: Upload debug artifacts on failure
-        if: failure() && steps.dst_gate.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: actions-debug-${{ github.run_number }}
-          path: actions-debug/
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Commit state + dashboard updates
-        if: always() && steps.dst_gate.outputs.run == 'true'
-        run: |
-          git config user.name "casenet-tracker[bot]"
-          git config user.email "casenet-tracker@users.noreply.github.com"
-          git add state/ docs/ || true
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
-          else
-            git commit -m "daily: $(date -u +%Y-%m-%d) docket update"
-            git push
-          fi
+      - run: |
+          echo "casenet-tracker now runs locally on the user's Mac."
+          echo "See README.md → 'How it runs'."
+          exit 0

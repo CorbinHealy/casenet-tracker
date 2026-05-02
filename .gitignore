@@ -7,10 +7,12 @@ __pycache__/
 .venv/
 venv/
 
-# Local-only OAuth files (never commit)
+# Local-only files (never commit)
 client_secret.json
 token.json
 *.token
+.bar_number
+logs/
 
 # Playwright
 .cache/

@@ -1,232 +1,168 @@
 # CaseNet Tracker
 
-Automated daily pull of Missouri CaseNet's "Scheduled Hearings → Search by Attorney"
-form for one MOBAR number, with prep-flag rules, and four delivery channels:
+Daily pull of Missouri CaseNet's Scheduled Hearings & Trials by Attorney for
+one MOBAR number, with prep-flag rules and three delivery channels:
 
-- Daily email digest (Gmail SMTP)
-- Google Calendar event sync (dedicated calendar)
-- Static dashboard (GitHub Pages)
-- iMessage summary at 6:05 AM (Mac LaunchAgent)
+- **Apple Calendar** — events sync to your iPhone via iCloud
+- **iMessage** — one-line summary at 6 AM
+- **Static dashboard** — published to GitHub Pages, bookmarkable
 
-The job runs via GitHub Actions at 11:00 UTC daily (6:00 AM Central) and writes
-state and dashboard back to the repo.
+The job runs **locally on your Mac at 6:00 AM** via a `launchd` agent. Why
+not the cloud: CaseNet blocks GitHub Actions / cloud IP ranges with HTTP 403.
+Your home/personal IP gets through cleanly.
+
+---
+
+## How it runs
+
+```
+Your Mac (LaunchAgent at 6:00 AM)
+  └─ run.sh
+       └─ python -m src.main
+            ├─ scraper.py     → Playwright Chromium → CaseNet (7-day chunks)
+            ├─ parser.py      → labeled-block text → Hearing records
+            ├─ differ.py      → compare to state/docket.json
+            ├─ flags.py       → apply prep_rules.yaml
+            ├─ render_dashboard.py  → docs/index.html + docs/digest.json
+            ├─ notify_apple_calendar.py  → osascript → Calendar.app → iCloud
+            ├─ notify_imessage.py        → osascript → Messages.app
+            └─ git push       → updates the GH Pages dashboard
+```
+
+Wake-from-sleep: the Mac wakes briefly at 5:55 AM (via `pmset repeat`),
+runs the job by 6:00 AM, then goes back to sleep. Display stays off.
 
 ---
 
 ## One-time setup
 
-You will do this once. Estimate: 25–40 minutes.
+Estimate: 10–15 minutes.
 
-### 1. Create the GitHub repo
+### 1. Install Python (if you don't have it already)
 
-1. Create a **private** repo on GitHub (any name, e.g. `casenet-tracker`).
-2. From the folder containing this README, push:
-   ```bash
-   git init
-   git add .
-   git commit -m "initial scaffold"
-   git branch -M main
-   git remote add origin git@github.com:YOUR_USERNAME/casenet-tracker.git
-   git push -u origin main
-   ```
+Open Terminal and run:
+```
+python3 --version
+```
+If that prints `Python 3.x.y` (any 3.10+), you're set. If "command not found",
+install with:
+```
+brew install python
+```
+(install Homebrew first from https://brew.sh if needed).
 
-### 2. Edit `config.yaml`
+### 2. Run the setup script
 
-Open `config.yaml` and confirm:
-- `attorney.name` matches what CaseNet shows for your bar number
-- `attorney.county` is `Jackson` (or change as needed)
-- `attorney.timezone` is `America/Chicago`
-- `notify.email_to` is your delivery email
-
-### 3. Tune `prep_rules.yaml`
-
-Edit hearing-type → days-out lead times. The system uses case-insensitive
-substring matching against CaseNet's hearing-type label, so `"jury trial"`
-will match `"Jury Trial Setting"`, `"Jury Trial — Day 1"`, etc.
-
-### 4. Generate a Gmail App Password
-
-1. https://myaccount.google.com → Security → 2-Step Verification (must be ON)
-2. App passwords → create one named `CaseNet Tracker`
-3. Copy the 16-character password (no spaces). You'll paste it as a secret in step 6.
-
-### 5. Generate Google Calendar OAuth credentials
-
-This authorizes the workflow to create/update events on a dedicated CaseNet calendar.
-
-1. Go to https://console.cloud.google.com → create project `casenet-tracker`
-2. APIs & Services → Library → enable **Google Calendar API**
-3. APIs & Services → OAuth consent screen → External, fill required fields, add
-   your Gmail address as a test user
-4. Credentials → Create Credentials → OAuth client ID → **Desktop app**
-5. Download the JSON, save it locally as `client_secret.json` (do **not** commit)
-6. In a terminal on your Mac:
-   ```bash
-   pip install -r requirements.txt
-   python -m src.auth_gcal --client-secret /path/to/client_secret.json
-   ```
-   This opens a browser for you to authorize, then prints a refresh token.
-   Copy that token — you'll paste it as `GCAL_REFRESH_TOKEN` in the next step.
-
-7. In Google Calendar (web), create a new calendar called `CaseNet`. Open its
-   settings → "Integrate calendar" → copy the **Calendar ID** (looks like
-   `abc123@group.calendar.google.com`). You'll paste it as `GCAL_CALENDAR_ID`.
-
-### 6. Add GitHub Secrets
-
-Repo → Settings → Secrets and variables → Actions → New repository secret. Add:
-
-| Name                      | Value                                                       |
-|---------------------------|-------------------------------------------------------------|
-| `MOBAR_NUMBER`            | Your Missouri bar number (digits only)                      |
-| `GMAIL_USER`              | The Gmail address sending the digest (e.g. yours)           |
-| `GMAIL_APP_PASSWORD`      | The 16-char app password from step 4                        |
-| `GCAL_CLIENT_ID`          | From `client_secret.json` (step 5)                          |
-| `GCAL_CLIENT_SECRET`      | From `client_secret.json` (step 5)                          |
-| `GCAL_REFRESH_TOKEN`      | From step 5's `auth_gcal.py` output                         |
-| `GCAL_CALENDAR_ID`        | The CaseNet calendar ID from step 5                         |
-
-### 7. Enable GitHub Pages
-
-Repo → Settings → Pages → Source: **Deploy from a branch** → Branch: `main`,
-folder: `/docs`. Save. Your dashboard will be live at
-`https://YOUR_USERNAME.github.io/casenet-tracker/` within a minute or two.
-
-Bookmark this URL on your phone and laptop. There is no login — security is
-through obscurity. If that's not acceptable, see "Locking down the dashboard"
-below.
-
-### 8. First run
-
-Repo → Actions → "Daily CaseNet pull" → Run workflow. Watch the run. If green:
-expect an email digest to arrive within a minute, calendar events to populate,
-and the dashboard to update on next page refresh.
-
-If red: open the failed step's log. Common first-run failures and fixes are in
-the "Troubleshooting" section.
-
-### 9. (Optional) Install the iMessage agent on your Mac
-
-This wakes at 6:05 AM, fetches the dashboard's `digest.json`, and iMessages
-yourself a one-line summary. Skip if you're fine with email push.
-
-```bash
-# From this folder, on your Mac:
-cp mac-agent/com.casenet.tracker.plist ~/Library/LaunchAgents/
-# Edit the plist to set DASHBOARD_URL to your GH Pages URL
-launchctl load ~/Library/LaunchAgents/com.casenet.tracker.plist
-# Test:
-launchctl start com.casenet.tracker
+From the repo folder:
+```
+cd ~/Desktop/casenet-tracker
+bash mac-agent/setup.sh
 ```
 
-You'll get an iMessage permission prompt the first time it runs. Approve.
+It prompts for your bar number and iMessage recipient, creates a Python venv,
+installs dependencies + Playwright Chromium, and installs the LaunchAgent.
+
+### 3. Enable wake-from-sleep at 5:55 AM (Mon–Fri)
+
+```
+sudo pmset repeat wake MTWRF 05:55:00
+```
+This is what makes the daily run survive your Mac being asleep. Only works
+while the Mac is plugged in. Add Sat/Sun by using `MTWRFSU`.
+
+To remove later: `sudo pmset repeat cancel`.
+
+### 4. Test run
+
+```
+bash run.sh
+```
+
+The first run triggers two macOS permission prompts:
+- **"Python wants to control Calendar"** → click OK
+- **"Python wants to control Messages"** → click OK
+
+After that the script runs quietly. Logs land in `logs/tracker.log`. If it
+succeeds, you should see hearings on:
+- The dashboard URL: `https://corbinhealy.github.io/casenet-tracker/`
+- A new "CaseNet" calendar in Calendar.app (auto-syncs to your iPhone)
+- An iMessage from yourself with a one-line summary
 
 ---
 
 ## Day-to-day use
 
-- The workflow runs every day at 6 AM Central. You don't need to do anything.
-- To **change prep rules**: edit `prep_rules.yaml`, commit, push. Next run picks it up.
-- To **manually re-run** (e.g., after CaseNet edits): repo → Actions → Run workflow.
-- To **add another county** (e.g., Clay): add to `config.yaml` under
-  `attorney.counties:` as a list, no other changes needed.
+Nothing — the LaunchAgent runs every weekday morning. You just check the
+iMessage when it lands or open the dashboard.
 
----
+To **change prep rules**: edit `prep_rules.yaml`, save, `bash run.sh` to test.
 
-## Architecture
+To **add another county**: add it to `config.yaml` under `attorney.counties`.
+Codes for Clay, Platte, Cass, Johnson are already in `src/scraper.py`; for
+others, look at the `<select name="courtCode">` options on the search form.
 
+To **change the wake time** (e.g. 5:30 AM):
 ```
-GitHub Actions (cron 11:00 UTC daily)
-  ├─ src/scraper.py     → Playwright → CaseNet attorney search
-  ├─ src/parser.py      → HTML rows → structured records
-  ├─ src/differ.py      → compare to state/docket.json → tag new/moved/cancelled
-  ├─ src/flags.py       → apply prep_rules.yaml
-  └─ src/main.py        → orchestrate, then fan out:
-        ├─ notify_email.py        → Gmail SMTP digest
-        ├─ notify_calendar.py     → Google Calendar API event sync
-        └─ render_dashboard.py    → writes docs/index.html + docs/digest.json
-                                  → committed back to repo → GH Pages publishes
-
-Your Mac (LaunchAgent at 6:05am)
-  └─ send_imessage.applescript    → fetches docs/digest.json → iMessages you
+sudo pmset repeat cancel
+sudo pmset repeat wake MTWRF 05:25:00
 ```
-
-State lives in `state/docket.json`, committed back at the end of each run. Git
-history gives you a full timeline of every docket change.
+And in `~/Library/LaunchAgents/com.casenet.tracker.plist`, change the `Hour`
+and `Minute` of `StartCalendarInterval`. Then:
+```
+launchctl unload ~/Library/LaunchAgents/com.casenet.tracker.plist
+launchctl load   ~/Library/LaunchAgents/com.casenet.tracker.plist
+```
 
 ---
 
 ## Troubleshooting
 
-**Email arrives empty or with weird hearing-type labels.**
-CaseNet's labels for the same hearing aren't always consistent across divisions.
-Add the variant to `prep_rules.yaml`. Run with `--debug` locally to see raw
-labels:
-```bash
-python -m src.scraper --debug --bar-number 76645 --county Jackson
+**Nothing happened at 6 AM.** Was the Mac actually awake? Check:
 ```
-
-**The Actions run says "Manual CaseNet check required."**
-The scraper hit either a CAPTCHA or unrecognized markup. Logs include a
-screenshot artifact. Most often this is CaseNet performing a brief outage or
-markup change. Re-run manually 30 minutes later. If it persists, open the
-HTML artifact in `actions-debug/` and update `src/parser.py` selectors.
-
-**Calendar events duplicating.**
-Each event has a deterministic ID (`casenet-<case>-<datetime>`). Duplicates
-mean a hearing time changed without keeping the same case number — usually a
-CaseNet quirk. Manually delete the orphan; the next run won't re-create it.
-
-**iMessage agent isn't firing.**
-```bash
-launchctl list | grep casenet
-log show --predicate 'subsystem == "com.apple.xpc.launchd"' --last 1h | grep casenet
+log show --predicate 'subsystem == "com.apple.xpc.launchd"' --last 2h | grep casenet
 ```
-Most common cause: Full Disk Access not granted to `osascript` (System
-Settings → Privacy → Full Disk Access).
+If the LaunchAgent didn't fire, the Mac was likely off or unplugged.
 
-**You're seeing a hearing on your physical calendar that didn't make it into the digest.**
-That's the confidential-case blind spot — juvenile, sealed, certain DV ex-parte
-matters are not visible on CaseNet's public attorney search. This system can't
-fix that. Cross-reference your office's case management system for those.
+**iMessage didn't arrive but everything else worked.** Most often Full Disk
+Access not granted to `osascript`. System Settings → Privacy & Security →
+Full Disk Access → add `/usr/bin/osascript`.
 
----
+**Calendar events aren't on my iPhone.** Calendar.app → check that the
+"CaseNet" calendar is part of your iCloud account (not "On My Mac"). If it
+ended up under On My Mac, drag it into iCloud in Calendar.app's sidebar.
 
-## Locking down the dashboard
+**The dashboard URL shows a 404.** GitHub Pages takes ~1 minute after the
+first push. If still 404 after 5 minutes: repo Settings → Pages → confirm
+Source = "Deploy from a branch", Branch = `main`, folder = `/docs`.
 
-Default setup is a public-but-unguessable GH Pages URL. If you want stronger
-controls, options in increasing order of effort:
+**Email is missing on the dashboard or iMessage didn't fire today.** Check
+`logs/tracker.log` for stack traces. The orchestrator runs each notifier in
+its own try/except, so one failure doesn't kill the others.
 
-1. **Cloudflare Access in front of GH Pages** — free for personal use, adds
-   email-based gate. Requires moving the dashboard to a custom domain.
-2. **Move dashboard to private hosting** — e.g., Vercel with password
-   protection. Requires changing where `render_dashboard.py` writes to.
-3. **Encrypt the dashboard payload** — write `digest.json` AES-encrypted, have
-   the dashboard ask for a passphrase to decrypt client-side. Most work, no
-   external dependency.
-
-V1 ships with option 0 (unguessable URL). Open an issue in the repo if you
-want one of the above implemented.
+**A hearing on my paper docket isn't showing up.** Confidential cases —
+juvenile, sealed, certain DV ex-parte matters — are not visible on CaseNet's
+public attorney search. This system can't see them.
 
 ---
 
 ## Files
 
-- `src/` — Python source. Each module is a single responsibility.
-- `tests/` — Parser regression tests against a saved CaseNet HTML fixture.
-- `state/docket.json` — Last successful pull. Auto-committed by the workflow.
+- `src/` — Python source. Each module is single-responsibility.
+- `tests/` — Parser regression tests against a labeled-block fixture.
+- `state/docket.json` — Last successful pull. Auto-committed.
 - `docs/` — Static dashboard published via GitHub Pages.
-- `mac-agent/` — Optional iMessage delivery agent.
-- `.github/workflows/daily.yml` — The cron + run.
-- `config.yaml` — User config (county, calendar id, recipient).
+- `mac-agent/` — `setup.sh`, the LaunchAgent template, and helpers.
+- `run.sh` — Wrapper the LaunchAgent calls each morning.
+- `config.yaml` — User config (county, calendar name, iMessage recipient).
 - `prep_rules.yaml` — Hearing-type → days-out flags.
+- `.bar_number` — Your MOBAR number, gitignored.
 
 ---
 
 ## Legal note
 
 CaseNet data is public record under Missouri Court Operating Rule 2.
-Automated retrieval of public-facing records is generally permissible, but
-this tool intentionally throttles its requests (one query per day) and uses
-a normal browser user-agent. If you ever receive a notice from OSCA asking
-you to stop, stop. The tool is designed to stay well within reasonable use.
+Automated retrieval of public records is generally permissible; this tool
+intentionally throttles to one query per 7-day window per day, runs from a
+residential IP, and uses a normal browser user-agent. If you ever receive a
+notice from OSCA asking you to stop, stop.
