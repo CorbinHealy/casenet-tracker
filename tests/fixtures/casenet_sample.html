@@ -1,48 +1,74 @@
 <!--
-  Sample CaseNet "Search by Attorney" results table.
-
-  This is a placeholder to anchor the parser tests. After your first real run,
-  replace this file with the actual HTML from actions-debug/casenet_results.html
-  and update the EXPECTED constants in tests/test_parser.py to match.
+  Synthetic CaseNet results for the Scheduled Hearing/Trials by Attorney query.
+  Format mirrors the live calendarSearchResult.do output: labeled-block text
+  inside ordinary HTML, grouped by day headers.
 -->
-<html><body>
-<h1>Scheduled Hearings — Search by Attorney</h1>
-<table class="results">
-  <thead>
-    <tr>
-      <th>Case Number</th>
-      <th>Style</th>
-      <th>Hearing Type</th>
-      <th>Date/Time</th>
-      <th>Location</th>
-      <th>Judge</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><a href="/cnet/case?n=2316-CR01234">2316-CR01234</a></td>
-      <td>State of Missouri v. John Q. Defendant</td>
-      <td>Motion to Suppress</td>
-      <td>05/15/2026 09:00 AM</td>
-      <td>Division 16</td>
-      <td>Hon. Jane Smith</td>
-    </tr>
-    <tr>
-      <td><a href="/cnet/case?n=2316-CR05678">2316-CR05678</a></td>
-      <td>State of Missouri v. Mary M. Roe</td>
-      <td>Jury Trial Setting</td>
-      <td>06/03/2026 09:30 AM</td>
-      <td>Division 9</td>
-      <td>Hon. Robert Chen</td>
-    </tr>
-    <tr>
-      <td><a href="/cnet/case?n=2316-CR09999">2316-CR09999</a></td>
-      <td>State of Missouri v. Alex P. Doe</td>
-      <td>Probation Violation Hearing</td>
-      <td>05/07/2026 01:30 PM</td>
-      <td>Division 22</td>
-      <td>Hon. Patricia Lee</td>
-    </tr>
-  </tbody>
-</table>
+<!doctype html>
+<html><head><title>Case.net: Scheduled Hearing/Trials Results</title></head>
+<body>
+<h1>Scheduled Hearing/Trials Results</h1>
+<p>May 2, 2026 - May 8, 2026</p>
+<p>MOBAR 76645 | Jackson County - 16th Judicial Circuit</p>
+<p>If an event is continued or cancelled it will not appear on this calendar.</p>
+<div>Calendar Detail</div>
+
+<h3>MONDAY, MAY 4, 2026</h3>
+
+<div class="event">
+  Case Number: 2516-CR02406-01<br>
+  Style of Case: ST V MICHAEL L HILL<br>
+  Time: 09:00:00<br>
+  Day: 1<br>
+  Location: Kansas City Criminal/Traffic<br>
+  Room: DIVISION 7 CRIMINAL<br>
+  Event: Plea Hearing<br>
+  Event Text: THIS WILL BE HELD IN PERSON<br>
+</div>
+
+<div class="event">
+  Case Number: 2516-CR02406-01<br>
+  Style of Case: ST V MICHAEL L HILL<br>
+  Time: 09:00:00<br>
+  Day: 1<br>
+  Location: Kansas City Criminal/Traffic<br>
+  Room: DIVISION 7 CRIMINAL<br>
+  Event: Jury Trial<br>
+  Event Text: THIS WILL BE HELD IN PERSON - 4 DAYS<br>
+</div>
+
+<div class="event">
+  Case Number: 2516-CR04034-01<br>
+  Style of Case: ST V HARRY P FOSTER<br>
+  Time: 10:30:00<br>
+  Day: 1<br>
+  Location: Independence Criminal/Traffic<br>
+  Room: DIVISION 50 (3RD FL INDEP)<br>
+  Event: Hearing<br>
+  Event Text: <br>
+</div>
+
+<h3>TUESDAY, MAY 5, 2026</h3>
+
+<div class="event">
+  Case Number: 2316-CR04724-01<br>
+  Style of Case: ST V JAMES E. JOHNSON<br>
+  Time: 13:00:00<br>
+  Day: 1<br>
+  Location: Kansas City Criminal/Traffic<br>
+  Room: DIVISION 11 CRIMINAL<br>
+  Event: Bond Review Hearing Scheduled<br>
+  Event Text: <br>
+</div>
+
+<div class="event">
+  Case Number: 2616-CR01176-01<br>
+  Style of Case: ST V JAMES C. ADAMS<br>
+  Time: 13:00:00<br>
+  Day: 1<br>
+  Location: Kansas City Criminal/Traffic<br>
+  Room: DIVISION 7 CRIMINAL<br>
+  Event: Pre-trial Conference<br>
+  Event Text: <br>
+</div>
+
 </body></html>
