@@ -80,12 +80,22 @@ def main() -> int:
             log.error("Scraper failed for county=%s: %s", county, exc)
             failed_counties.append((county, str(exc)))
 
+    # Decide which notifiers are actually configured. Each notifier is opt-in:
+    # if its required env vars aren't set, we skip it cleanly so the workflow
+    # stays green. The dashboard is always on (no secrets needed).
+    email_configured = bool(os.environ.get("GMAIL_USER")) and bool(os.environ.get("GMAIL_APP_PASSWORD"))
+    calendar_configured = all(
+        os.environ.get(k)
+        for k in ("GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET", "GCAL_REFRESH_TOKEN", "GCAL_CALENDAR_ID")
+    )
+
     if failed_counties and not all_results:
-        # Total failure — notify and stop.
-        notify_email.send_failure(
-            config=config,
-            errors=failed_counties,
-        )
+        # Total failure — best-effort email if configured, else just exit.
+        if email_configured:
+            try:
+                notify_email.send_failure(config=config, errors=failed_counties)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Failure email also failed: %s", exc)
         return 2
 
     # ---- 2. Merge and diff ----
@@ -98,25 +108,32 @@ def main() -> int:
 
     # ---- 4. Notify ----
     exit_code = 0
-    notifiers = [
-        ("email", lambda: notify_email.send(
+    notifiers = []
+    if email_configured:
+        notifiers.append(("email", lambda: notify_email.send(
             config=config,
             flagged=flagged,
             diff=diff_result,
             failed_counties=failed_counties,
-        )),
-        ("calendar", lambda: notify_calendar.sync(
+        )))
+    else:
+        log.info("Notifier email skipped — GMAIL_USER / GMAIL_APP_PASSWORD not set.")
+
+    if calendar_configured:
+        notifiers.append(("calendar", lambda: notify_calendar.sync(
             config=config,
             current=current,
             diff=diff_result,
-        )),
-        ("dashboard", lambda: render_dashboard.render(
-            config=config,
-            flagged=flagged,
-            diff=diff_result,
-            out_dir=DOCS_DIR,
-        )),
-    ]
+        )))
+    else:
+        log.info("Notifier calendar skipped — GCAL_* secrets not set.")
+
+    notifiers.append(("dashboard", lambda: render_dashboard.render(
+        config=config,
+        flagged=flagged,
+        diff=diff_result,
+        out_dir=DOCS_DIR,
+    )))
     for name, fn in notifiers:
         try:
             fn()
