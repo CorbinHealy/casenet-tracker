@@ -1,10 +1,13 @@
 """
-CaseNet scraper — direct GET against Missouri CaseNet's
-calendarSearchResult.do endpoint.
+CaseNet scraper — Playwright (headless Chromium) against
+calendarSearchResult.do.
 
-The form on https://www.courts.mo.gov/casenet/scheduledHearingSearch.do is a
-plain GET form, so we skip the form click-through and hit the result URL
-directly. Form fields:
+We tried plain `requests` first; CaseNet returns HTTP 403 to the GitHub
+Actions runner IPs (likely a generic anti-scraper rule). Headless Chromium
+with realistic headers gets through cleanly.
+
+The CaseNet form is a plain GET, so we don't need to drive any JS — we just
+navigate Chromium to the result URL directly. Form fields:
 
     courtCode      = "CT16SPACEJAK" for Jackson County (16th Judicial Circuit)
     searchType     = "A" (Attorney) | "J" (Judge)
@@ -12,8 +15,7 @@ directly. Form fields:
     mobarNumber    = your bar number
     startDate      = MM/DD/YYYY
 
-CaseNet caps the search to 7 days at a time, so we walk forward in 7-day
-chunks to cover the full window the user asked for.
+CaseNet caps each search to 7 days, so we walk forward in 7-day chunks.
 """
 from __future__ import annotations
 
@@ -26,14 +28,18 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlencode
 
-import requests  # type: ignore
+from playwright.sync_api import (  # type: ignore
+    TimeoutError as PlaywrightTimeoutError,
+    sync_playwright,
+)
 
 log = logging.getLogger(__name__)
 
 RESULTS_URL = "https://www.courts.mo.gov/casenet/calendarSearchResult.do"
+WARMUP_URL = "https://www.courts.mo.gov/cnet/welcome.do"
 
-# County → CaseNet court code mapping. Add more as needed by inspecting
-# <select name="courtCode"> on the search form.
+# County → CaseNet court code mapping. Add more by inspecting the form's
+# <select name="courtCode"> option values.
 COURT_CODES = {
     "Jackson": "CT16SPACEJAK",
     "Clay":    "CT07SPACECLY",
@@ -47,7 +53,7 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
 )
 
-REQUEST_TIMEOUT = 30  # seconds per HTTP request
+PAGE_TIMEOUT_MS = 30_000
 
 
 @dataclass
@@ -55,14 +61,14 @@ class ScrapeResult:
     bar_number: str
     county: str
     fetched_at_utc: str
-    html: str                              # concatenated HTML from all chunks
-    chunk_count: int                       # how many 7-day windows we fetched
+    html: str
+    chunk_count: int
     debug_artifacts_dir: Optional[Path] = None
     warnings: List[str] = field(default_factory=list)
 
 
 class ScraperError(RuntimeError):
-    """Raised when CaseNet returns something we can't make sense of."""
+    pass
 
 
 def scrape(
@@ -70,8 +76,8 @@ def scrape(
     county: str,
     *,
     forward_days: int = 60,
-    headless: bool = True,           # kept for compatibility; unused now
-    base_url: str = RESULTS_URL,     # kept for compatibility
+    headless: bool = True,
+    base_url: str = RESULTS_URL,
     debug_dir: Optional[Path] = None,
 ) -> ScrapeResult:
     if not bar_number.isdigit():
@@ -79,68 +85,86 @@ def scrape(
     if county not in COURT_CODES:
         raise ScraperError(
             f"Unknown county {county!r}. Add it to COURT_CODES in scraper.py "
-            f"with the matching CaseNet court code (visible in the form's "
-            f"<select name='courtCode'> options)."
+            f"with the matching CaseNet court code from the form's "
+            f"<select name='courtCode'> options."
         )
 
     fetched_at = datetime.now(timezone.utc).isoformat()
     chunks: List[str] = []
     warnings: List[str] = []
 
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    })
-
     today = datetime.now()
     chunk_start = today
-    chunk_size_days = 7
     chunk_count = 0
 
-    while chunk_start <= today + timedelta(days=forward_days):
-        params = {
-            "courtCode": COURT_CODES[county],
-            "searchType": "A",
-            "searchLength": str(chunk_size_days),
-            "mobarNumber": bar_number,
-            "startDate": chunk_start.strftime("%m/%d/%Y"),
-        }
-        url = f"{base_url}?{urlencode(params)}"
-        log.info("CaseNet GET window=%s (chunk %d)",
-                 chunk_start.strftime("%Y-%m-%d"), chunk_count + 1)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
         try:
-            resp = session.get(url, timeout=REQUEST_TIMEOUT)
-        except requests.RequestException as exc:
-            raise ScraperError(
-                f"Network error fetching CaseNet for {county} starting "
-                f"{chunk_start:%Y-%m-%d}: {exc}"
-            ) from exc
-
-        if resp.status_code != 200:
-            if debug_dir:
-                _save_debug_html(debug_dir, f"chunk-{chunk_count}-status-{resp.status_code}", resp.text)
-            raise ScraperError(
-                f"CaseNet returned HTTP {resp.status_code} for {county} "
-                f"window starting {chunk_start:%Y-%m-%d}."
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                locale="en-US",
+                viewport={"width": 1280, "height": 800},
             )
+            page = context.new_page()
 
-        body = resp.text
-        if "captcha" in body.lower() or "are you a human" in body.lower():
-            if debug_dir:
-                _save_debug_html(debug_dir, f"chunk-{chunk_count}-captcha", body)
-            raise ScraperError(
-                "CaseNet served a CAPTCHA. The job cannot proceed without "
-                "manual intervention. Re-run later."
-            )
+            # Warm up: hit the welcome page first so any session cookies are
+            # established before we hit the result endpoint.
+            try:
+                page.goto(WARMUP_URL, wait_until="domcontentloaded",
+                          timeout=PAGE_TIMEOUT_MS)
+            except PlaywrightTimeoutError:
+                warnings.append(f"Warmup of {WARMUP_URL} timed out; continuing.")
 
-        chunks.append(body)
-        chunk_count += 1
-        chunk_start += timedelta(days=chunk_size_days)
+            while chunk_start <= today + timedelta(days=forward_days):
+                params = {
+                    "courtCode": COURT_CODES[county],
+                    "searchType": "A",
+                    "searchLength": "7",
+                    "mobarNumber": bar_number,
+                    "startDate": chunk_start.strftime("%m/%d/%Y"),
+                }
+                url = f"{base_url}?{urlencode(params)}"
+                log.info("CaseNet GET window=%s (chunk %d)",
+                         chunk_start.strftime("%Y-%m-%d"), chunk_count + 1)
+                try:
+                    response = page.goto(url, wait_until="domcontentloaded",
+                                         timeout=PAGE_TIMEOUT_MS)
+                except PlaywrightTimeoutError as exc:
+                    raise ScraperError(
+                        f"Timeout fetching CaseNet for {county} window "
+                        f"starting {chunk_start:%Y-%m-%d}: {exc}"
+                    ) from exc
+
+                status = response.status if response else 0
+                if status != 200:
+                    body = page.content()
+                    if debug_dir:
+                        _save_debug_html(
+                            debug_dir, f"chunk-{chunk_count}-status-{status}", body)
+                    raise ScraperError(
+                        f"CaseNet returned HTTP {status} for {county} window "
+                        f"starting {chunk_start:%Y-%m-%d}."
+                    )
+
+                body = page.content()
+                lower = body.lower()
+                if "captcha" in lower or "are you a human" in lower:
+                    if debug_dir:
+                        _save_debug_html(
+                            debug_dir, f"chunk-{chunk_count}-captcha", body)
+                    raise ScraperError(
+                        "CaseNet served a CAPTCHA. Re-run later or contact "
+                        "OSCA if persistent."
+                    )
+
+                chunks.append(body)
+                chunk_count += 1
+                chunk_start += timedelta(days=7)
+        finally:
+            browser.close()
 
     if not chunks:
-        raise ScraperError("No chunks fetched — forward_days must be >= 0.")
+        raise ScraperError("No chunks fetched.")
 
     html = "\n<!-- CHUNK BOUNDARY -->\n".join(chunks)
     if debug_dir:
@@ -162,11 +186,6 @@ def _save_debug_html(out_dir: Path, name: str, html: str) -> None:
     (out_dir / f"{name}.html").write_text(html, encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# CLI for local debugging
-# ---------------------------------------------------------------------------
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="CaseNet attorney-search scraper")
     parser.add_argument("--bar-number", required=True)
@@ -174,6 +193,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--forward-days", type=int, default=60)
     parser.add_argument("--debug", action="store_true",
                         help="Save raw HTML chunks to actions-debug/")
+    parser.add_argument("--show-browser", action="store_true",
+                        help="Run Chromium with a visible window")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -188,6 +209,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             bar_number=args.bar_number,
             county=args.county,
             forward_days=args.forward_days,
+            headless=not args.show_browser,
             debug_dir=debug_dir,
         )
     except ScraperError as exc:
